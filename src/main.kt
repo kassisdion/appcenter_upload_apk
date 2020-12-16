@@ -47,6 +47,20 @@ class UploadToAppCenter {
             uploadToken = urlEncodedToken
         )
         println("$LOG_TAG Setting meta data -> successful : $metaData")
+
+        // Call 3
+        println("\n$LOG_TAG --- STEP 3 ---")
+        val chunkSize = requireNotNull(metaData["chunk_size"]).toInt()
+        println("$LOG_TAG Uploading app (file_size=$fileSize | chunk_size=$chunkSize | expected=${fileSize / chunkSize})")
+        uploadBuild(
+            file = apkFile,
+            apiToken = apiToken,
+            domain = uploadDomain,
+            packageAssetsId = packageAssetId,
+            token = urlEncodedToken,
+            chunkSize = chunkSize
+        )
+        println("$LOG_TAG Uploading app -> successful")
     }
 
     private fun createReleaseUpload(
@@ -82,7 +96,7 @@ class UploadToAppCenter {
         fileName: String,
         fileSize: Long,
         uploadToken: String
-    ): Map<String, Any> {
+    ): Map<String, String> {
         val url = "$domain/upload/set_metadata/$packageAssetId" +
                 "?file_name=$fileName" +
                 "&file_size=$fileSize" +
@@ -115,27 +129,80 @@ class UploadToAppCenter {
         }
     }
 
-    private fun String.asJsonMap(): Map<String, String> {
-        return this
-            .removePrefix("{")
-            .removeSuffix("}")
-            .split(",")
-            .map {
-                with(it.split(":", limit = 2)) {
-                    Pair(
-                        get(0).removePrefix("\"").removeSuffix("\""),
-                        get(1).removePrefix("\"").removeSuffix("\"")
-                    )
-                }
+    private fun uploadBuild(
+        file: File,
+        apiToken: String,
+        domain: String,
+        packageAssetsId: String,
+        token: String,
+        chunkSize: Int
+    ) {
+        file.chunkedSequence(chunkSize).forEachIndexed { index, bytes ->
+            val blockNumber = index + 1
+
+            println("$LOG_TAG uploadBuild > chunk $blockNumber (size=${bytes.size})")
+
+            val url = "$domain/upload/upload_chunk/$packageAssetsId" +
+                    "?token=$token" +
+                    "&block_number=$blockNumber"
+
+            val httpClient = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+
+                addRequestProperty("Content-Length", "${bytes.size}")
+                addRequestProperty("Content-Type", "application/octet-stream")
+                addRequestProperty("X-API-Token", apiToken)
             }
-            .associateBy(
-                { it.first }, { it.second }
-            )
+            try {
+                httpClient.outputStream.use { it.write(bytes) }
+                check(httpClient.responseCode == 200) {
+                    "$LOG_TAG uploadBuild > unwanted response"
+                    "$LOG_TAG     code: ${httpClient.responseCode}"
+                    "$LOG_TAG     response :${httpClient.errorStream.bufferedReader().readText()}"
+                }
+
+            } finally {
+                httpClient.disconnect()
+            }
+        }
     }
 
     companion object {
-        const val LOG_TAG = "[UploadToAppCenter]"
-        const val PREFIX = "https://api.appcenter.ms/v0.1/apps"
+        private const val LOG_TAG = "[UploadToAppCenter]"
+        private const val PREFIX = "https://api.appcenter.ms/v0.1/apps"
+
+        private fun String.asJsonMap(): Map<String, String> {
+            return this
+                .removePrefix("{")
+                .removeSuffix("}")
+                .split(",")
+                .map {
+                    with(it.split(":", limit = 2)) {
+                        Pair(
+                            get(0).removePrefix("\"").removeSuffix("\""),
+                            get(1).removePrefix("\"").removeSuffix("\"")
+                        )
+                    }
+                }
+                .associateBy(
+                    { it.first }, { it.second }
+                )
+        }
+
+        private fun File.chunkedSequence(chunk: Int): Sequence<ByteArray> {
+            val input = this.inputStream().buffered()
+            val buffer = kotlin.ByteArray(chunk)
+            return generateSequence {
+                val red = input.read(buffer)
+                if (red >= 0) {
+                    buffer.copyOf(red)
+                } else {
+                    input.close()
+                    null
+                }
+            }
+        }
     }
 }
 
