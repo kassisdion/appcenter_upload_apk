@@ -28,9 +28,12 @@ hs_err_pid*
 # macOs
 .DS_Store
 
-# intlij
+# intelij
 out/**
 **/.idea/
 *.hprof
 *.apk
 *.iml
+
+# personal script i don't want to commit
+nocommit/**
