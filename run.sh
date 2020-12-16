@@ -27,6 +27,16 @@ case $key in
     shift
     shift
     ;;
+   -releaseNote)
+    NOTES="$2"
+    shift
+    shift
+    ;;
+     -destination)
+    DESTINATION="$2"
+    shift
+    shift
+    ;;
     *)
     echo "Unknown argument: $1"
     exit 1
@@ -38,9 +48,11 @@ done
 [ -z "$OWNERNAME" ] && echo "missing parameter -ownerName" && exit 1
 [ -z "$APPNAME" ] && echo "missing parameter -appName" && exit 1
 [ -z "$FILE" ] && echo "missing parameter -file" && exit 1
+[ -z "$NOTES" ] && echo "missing parameter -releaseNote" && exit 1
+[ -z "$DESTINATION" ] && echo "missing parameter -destination" && exit 1
 
 echo "compiling..."
 kotlinc src/main.kt -include-runtime -d out/main.jar
 
 echo "launching..."
-java -jar out/main.jar -apiToken "$APITOKEN" -ownerName "$OWNERNAME" -appName "$APPNAME" -file "$FILE"
+java -jar out/main.jar -apiToken "$APITOKEN" -ownerName "$OWNERNAME" -appName "$APPNAME" -file "$FILE" -releaseNote "$NOTES" -destination "$DESTINATION"
