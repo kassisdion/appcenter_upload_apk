@@ -22,7 +22,7 @@ class UploadToAppCenter {
         println("$LOG_TAG want to upload $apkFile in group $appName)")
 
         // Call 1
-        println("$LOG_TAG --- STEP 1 ---")
+        println("$LOG_TAG # Step 1 of 7")
         println("$LOG_TAG Creating upload")
         val createReleaseUploadResult = createReleaseUpload(
             apiToken = apiToken,
@@ -30,9 +30,12 @@ class UploadToAppCenter {
             appName = appName
         )
         println("$LOG_TAG Creating upload -> successful")
+        if (DEBUG) {
+            println("$LOG_TAG Creating upload -> response=$createReleaseUploadResult")
+        }
 
         // Call 2
-        println("\n$LOG_TAG --- STEP 2 ---")
+        println("\n$LOG_TAG # Step 2 of 7")
         println("$LOG_TAG] Setting meta data")
         val uploadDomain = requireNotNull(createReleaseUploadResult["upload_domain"])
         val packageAssetId = requireNotNull(createReleaseUploadResult["package_asset_id"])
@@ -46,10 +49,13 @@ class UploadToAppCenter {
             fileSize = apkFile.length(),
             uploadToken = urlEncodedToken
         )
-        println("$LOG_TAG Setting meta data -> successful : $metaData")
+        println("$LOG_TAG Setting meta data -> successful")
+        if (DEBUG) {
+            println("$LOG_TAG Setting meta data -> response=$metaData")
+        }
 
         // Call 3
-        println("\n$LOG_TAG --- STEP 3 ---")
+        println("\n$LOG_TAG # Step 3 of 7")
         val chunkSize = requireNotNull(metaData["chunk_size"]).toInt()
         println("$LOG_TAG Uploading app (file_size=$fileSize | chunk_size=$chunkSize | expected=${fileSize / chunkSize})")
         uploadBuild(
@@ -61,6 +67,19 @@ class UploadToAppCenter {
             chunkSize = chunkSize
         )
         println("$LOG_TAG Uploading app -> successful")
+
+        // Call 4
+        println("\n$LOG_TAG # Step 4 of 7")
+        println("$LOG_TAG Finishing release upload")
+        val finishReleaseUploadResult = finishReleaseUpload(
+            domain = uploadDomain,
+            packageAssetsId = packageAssetId,
+            token = urlEncodedToken
+        )
+        println("$LOG_TAG Finishing release upload -> successful")
+        if (DEBUG) {
+            println("$LOG_TAG Finishing release upload -> response=$finishReleaseUploadResult")
+        }
     }
 
     private fun createReleaseUpload(
@@ -161,10 +180,36 @@ class UploadToAppCenter {
                     "$LOG_TAG     code: ${httpClient.responseCode}"
                     "$LOG_TAG     response :${httpClient.errorStream.bufferedReader().readText()}"
                 }
-
             } finally {
                 httpClient.disconnect()
             }
+        }
+    }
+
+    private fun finishReleaseUpload(
+        domain: String,
+        packageAssetsId: String,
+        token: String
+    ): Map<String, Any> {
+        val spec = "$domain/upload/finished/$packageAssetsId?token=$token"
+        val body = """{}""".toByteArray()
+
+        val httpClient = (URL(spec).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            doOutput = true
+
+            addRequestProperty("Content-Length", "${body.size}")
+        }
+        try {
+            httpClient.outputStream.use { it.write(body) }
+            check(httpClient.responseCode == 200) {
+                "$LOG_TAG finishReleaseUpload > wrong response : ${httpClient.responseCode}"
+                "$LOG_TAG     code: ${httpClient.responseCode}"
+                "$LOG_TAG     response :${httpClient.errorStream.bufferedReader().readText()}"
+            }
+            return httpClient.inputStream.bufferedReader().readText().asJsonMap()
+        } finally {
+            httpClient.disconnect()
         }
     }
 
@@ -225,6 +270,10 @@ fun main(args: Array<String>) {
     val appName = args.extractArgs("-appName")
     val apkFile = args.extractArgs("-file")
 
+    if (DEBUG) {
+        println("apiToken=$apiToken ownerName=$ownerName appName=$appName apkFile=$apkFile")
+    }
+
     UploadToAppCenter().act(
         apiToken = apiToken,
         ownerName = ownerName,
@@ -232,3 +281,5 @@ fun main(args: Array<String>) {
         apkFile = File(apkFile)
     )
 }
+
+val DEBUG = true
